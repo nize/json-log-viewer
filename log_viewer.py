@@ -46,6 +46,12 @@ def display_events(stdscr, event_list):
         elif key in [curses.KEY_DOWN, ord('s')] and current_row < len(event_list) - 1:
             current_row += 1
             offset = max(0, current_row - height + 1)
+        elif key == curses.KEY_PPAGE:  # Page Up
+            current_row = max(0, current_row - height)
+            offset = max(0, offset - height)
+        elif key == curses.KEY_NPAGE:  # Page Down
+            current_row = min(len(event_list) - 1, current_row + height)
+            offset = min(max(0, len(event_list) - height), offset + height)
         elif key == ord('q'):
             break
         elif key == ord('d'):
@@ -68,11 +74,9 @@ def display_events(stdscr, event_list):
                             stdscr.attron(curses.color_pair(2))
                             stdscr.addstr(i, 0, key + ':')
                             stdscr.attroff(curses.color_pair(2))
-                            # Check if adding value will exceed window boundary
                             if i < height - 1:
                                 stdscr.addstr(value)
                         else:
-                            # Check if line can be added without exceeding window boundary
                             if i < height - 1:
                                 stdscr.addstr(i, 0, line)
                     else:
@@ -83,6 +87,10 @@ def display_events(stdscr, event_list):
                     details_offset -= 1
                 elif details_key in [curses.KEY_DOWN, ord('s')] and details_offset < len(wrapped_lines) - height:
                     details_offset += 1
+                elif details_key == curses.KEY_PPAGE:  # Page Up in detail view
+                    details_offset = max(0, details_offset - height)
+                elif details_key == curses.KEY_NPAGE:  # Page Down in detail view
+                    details_offset = min(len(wrapped_lines) - height, details_offset + height)
                 elif details_key == ord('q') or details_key == ord('d'):
                     break
 
