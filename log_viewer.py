@@ -1,17 +1,32 @@
+import argparse
 import curses
 import json
 import threading
 import textwrap
+import time
 
-def parse_log_file(file_path, event_list):
+def parse_log_file(file_path, event_list, tail_mode):
     """ Continuously parse the log file and update the event list. """
     with open(file_path, 'r') as file:
-        for line in file:
-            try:
-                event = json.loads(line)
-                event_list.append(event)
-            except json.JSONDecodeError:
-                continue
+        if not tail_mode:
+            lines = file.readlines()
+            for line in reversed(lines):
+                try:
+                    event = json.loads(line)
+                    event_list.append(event)
+                except json.JSONDecodeError:
+                    continue
+        file.seek(0, 2)  # Move to the end of the file for tail mode
+        while True:
+            line = file.readline()
+            if line:
+                try:
+                    event = json.loads(line)
+                    event_list.insert(0, event)  # Prepend new event
+                except json.JSONDecodeError:
+                    continue
+            else:
+                time.sleep(0.1)
 
 def display_events(stdscr, event_list):
     """ Display events in a scrollable list using curses. """
@@ -98,11 +113,16 @@ def display_events(stdscr, event_list):
 
         stdscr.refresh()
 
-
 def main():
-    log_file_path = "combined.json.log"
+    parser = argparse.ArgumentParser(description="Log Viewer")
+    parser.add_argument("logfile", help="Path to the log file")
+    parser.add_argument("--tail", action="store_true", help="Start in tail mode")
+    args = parser.parse_args()
+
+    log_file_path = args.logfile
+    tail_mode = args.tail
     event_list = []
-    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list))
+    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list, tail_mode))
     log_thread.daemon = True
     log_thread.start()
 
