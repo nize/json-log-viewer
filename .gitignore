@@ -1,2 +1,2 @@
 # ignore some logs files used for test
-*.log
+#*.log
