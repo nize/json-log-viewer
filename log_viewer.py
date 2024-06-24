@@ -75,11 +75,12 @@ def display_events(stdscr, event_list):
 
             if idx == current_row:
                 stdscr.attron(curses.color_pair(color_pair) | curses.A_REVERSE)  # Highlight current row with reverse video
+                stdscr.addstr(idx - offset, 0, display_str)
+                stdscr.attroff(curses.color_pair(color_pair) | curses.A_REVERSE)
             else:
                 stdscr.attron(curses.color_pair(color_pair))
-
-            stdscr.addstr(idx - offset, 0, display_str)
-            stdscr.attroff(curses.color_pair(color_pair))
+                stdscr.addstr(idx - offset, 0, display_str)
+                stdscr.attroff(curses.color_pair(color_pair))
 
         key = stdscr.getch()
 
@@ -98,12 +99,10 @@ def display_events(stdscr, event_list):
         elif key == ord('q'):
             break
         elif key == ord('d'):
-            show_event_details(stdscr, event_list, current_row, width, height)  # Assumes a refactored function for details view
-
-        stdscr.refresh()
+            show_event_details(stdscr, event_list, current_row, width, height)
 
 def show_event_details(stdscr, event_list, current_row, width, height):
-    """ A refactored function to show event details. """
+    """ Display detailed JSON event data with formatted keys. """
     stdscr.clear()
     details = json.dumps(event_list[current_row], indent=4).replace('\\n', '\n')
     details_lines = details.split('\n')
@@ -121,12 +120,14 @@ def show_event_details(stdscr, event_list, current_row, width, height):
                 line = wrapped_lines[line_idx]
                 if line.strip().startswith('"') and ':' in line:
                     key, value = line.split(':', 1)
-                    stdscr.attron(curses.color_pair(6))  # Verbose for JSON keys
+                    stdscr.attron(curses.color_pair(6))  # Verbose for JSON keys, set as light green earlier
                     stdscr.addstr(i, 0, key + ':')
                     stdscr.attroff(curses.color_pair(6))
-                    stdscr.addstr(value)
+                    if i < height - 1:
+                        stdscr.addstr(value)
                 else:
-                    stdscr.addstr(i, 0, line)
+                    if i < height - 1:
+                        stdscr.addstr(i, 0, line)
             else:
                 break
 
@@ -141,6 +142,8 @@ def show_event_details(stdscr, event_list, current_row, width, height):
             details_offset = min(len(wrapped_lines) - height, details_offset + height)
         elif details_key == ord('q') or details_key == ord('d'):
             break
+
+        stdscr.refresh()
 
 def main():
     parser = argparse.ArgumentParser(description="Log Viewer")
