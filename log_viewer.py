@@ -2,31 +2,67 @@ import argparse
 import curses
 import json
 import threading
+import getpass  # For securely getting the password input
 import textwrap
 import time
+import zlib
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-def parse_log_file(file_path, event_list, tail_mode):
-    """ Continuously parse the log file and update the event list. """
-    with open(file_path, 'r') as file:
-        if not tail_mode:
+def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=None):
+    """ Continuously parse the log file and update the event list. Optionally decrypts and decompresses the log file. """
+    def decrypt_and_decompress(data, password) -> str:
+        salt, iv, data = map(bytes.fromhex, data.split(':'))
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA512(),
+            length=32,
+            salt=salt,
+            iterations=100000,
+            backend=default_backend()
+        )
+        key = kdf.derive(password.encode())
+        cipher = Cipher(algorithms.AES(key), modes.CTR(iv), backend=default_backend())
+        decryptor = cipher.decryptor()
+        decrypted = decryptor.update(data) + decryptor.finalize()
+        decompressed = zlib.decompress(decrypted)
+        return decompressed.decode('utf-8')
+
+    if not cleartext:
+        with open(file_path, 'rb') as file:
+            encrypted_data = file.read()
+        try:
+            decrypted_data = decrypt_and_decompress(encrypted_data, password)
+            lines = decrypted_data.splitlines()
+        except Exception as e:
+            print(f"Failed to decrypt and decompress log file: {e}")
+            return
+    else:
+        with open(file_path, 'r') as file:
             lines = file.readlines()
-            for line in reversed(lines):
-                try:
-                    event = json.loads(line)
-                    event_list.append(event)
-                except json.JSONDecodeError:
-                    continue
-        file.seek(0, 2)  # Move to the end of the file for tail mode
-        while True:
-            line = file.readline()
-            if line:
-                try:
-                    event = json.loads(line)
-                    event_list.insert(0, event)  # Prepend new event
-                except json.JSONDecodeError:
-                    continue
-            else:
-                time.sleep(0.1)
+
+    if not tail_mode:
+        for line in reversed(lines):
+            try:
+                event = json.loads(line)
+                event_list.append(event)
+            except json.JSONDecodeError:
+                continue
+    else:
+        # For tail mode, start reading from the end of the file
+        with open(file_path, 'r') as file:
+            file.seek(0, 2)  # Move to the end of the file
+            while True:
+                line = file.readline()
+                if line:
+                    try:
+                        event = json.loads(line)
+                        event_list.insert(0, event)  # Prepend new event
+                    except json.JSONDecodeError:
+                        continue
+                else:
+                    time.sleep(0.1)
 
 def display_events(stdscr, event_list):
     """ Display events in a scrollable list using curses. """
@@ -149,12 +185,19 @@ def main():
     parser = argparse.ArgumentParser(description="Log Viewer")
     parser.add_argument("logfile", help="Path to the log file")
     parser.add_argument("--tail", action="store_true", help="Start in tail mode")
+    parser.add_argument("--cleartext", action="store_true", help="Indicates the log file is in clear text")
     args = parser.parse_args()
 
     log_file_path = args.logfile
     tail_mode = args.tail
+    cleartext = args.cleartext
+    password = None
+
+    if not cleartext:
+        password = getpass.getpass(prompt="Enter password: ")
+
     event_list = []
-    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list, tail_mode))
+    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list, tail_mode, cleartext, password))
     log_thread.daemon = True
     log_thread.start()
 
