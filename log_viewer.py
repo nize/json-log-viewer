@@ -25,7 +25,7 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
         key = kdf.derive(password.encode())
         cipher = Cipher(algorithms.AES(key), modes.CTR(iv), backend=default_backend())
         decryptor = cipher.decryptor()
-        decrypted = decryptor.update(data) + decryptor.finalize()
+        decrypted = decryptor.update(bytes.fromhex(data)) + decryptor.finalize()
         decompressed = zlib.decompress(decrypted)
         return decompressed.decode('utf-8')
 
