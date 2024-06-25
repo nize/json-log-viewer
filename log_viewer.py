@@ -14,6 +14,10 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=None):
     """ Continuously parse the log file and update the event list. Optionally decrypts and decompresses the log file. """
     def decrypt_and_decompress(data, password) -> str:
+        # Check if the encrypted data contains the expected segments
+        if ':' not in data:
+            print("Encrypted data format error: Expected segments not found.")
+            return
         salt, iv, data = map(bytes.fromhex, data.split(':'))
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA512(),
@@ -30,7 +34,7 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
         return decompressed.decode('utf-8')
 
     if not cleartext:
-        with open(file_path, 'rb') as file:
+        with open(file_path, 'r') as file:
             encrypted_data = file.read()
         try:
             decrypted_data = decrypt_and_decompress(encrypted_data, password)
