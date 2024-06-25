@@ -6,6 +6,8 @@ import getpass  # For securely getting the password input
 import textwrap
 import time
 import zlib
+import gzip
+import io
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
@@ -33,7 +35,10 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
         cipher = Cipher(algorithms.AES(key), modes.CTR(iv), backend=default_backend())
         decryptor = cipher.decryptor()
         decrypted = decryptor.update(data) + decryptor.finalize()
-        decompressed = zlib.decompress(decrypted)
+        # Decompress using gzip
+        with gzip.GzipFile(fileobj=io.BytesIO(decrypted), mode='rb') as gzip_file:
+            decompressed = gzip_file.read()
+        
         return decompressed.decode('utf-8')
 
     if not cleartext:
