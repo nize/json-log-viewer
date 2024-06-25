@@ -35,18 +35,24 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
 
     if not cleartext:
         with open(file_path, 'r') as file:
-            encrypted_data = file.read()
-        try:
-            decrypted_data = decrypt_and_decompress(encrypted_data, password)
-            lines = decrypted_data.splitlines()
-        except Exception as e:
-            print(f"Failed to decrypt and decompress log file: {e}")
-            return
+            for line in file:
+                try:
+                    decrypted_data = decrypt_and_decompress(line.strip(), password)
+                    event = json.loads(decrypted_data)
+                    event_list.append(event)
+                except Exception as e:
+                    print(f"Failed to decrypt and decompress log file: {e}")
+                    return
     else:
         with open(file_path, 'r') as file:
-            lines = file.readlines()
+            for line in file:
+                try:
+                    event = json.loads(line.strip())
+                    event_list.append(event)
+                except json.JSONDecodeError as e:
+                    print(f"Failed to decode line: {e}")
 
-    if not tail_mode:
+"""     if not tail_mode:
         for line in reversed(lines):
             try:
                 event = json.loads(line)
@@ -66,7 +72,7 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
                     except json.JSONDecodeError:
                         continue
                 else:
-                    time.sleep(0.1)
+                    time.sleep(0.1) """
 
 def display_events(stdscr, event_list):
     """ Display events in a scrollable list using curses. """
