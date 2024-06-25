@@ -19,9 +19,9 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
             print("Encrypted data format error: Expected segments not found.")
             return
         salt, iv, data = map(bytes.fromhex, data.split(':'))
-        print("Salt:", salt)
-        print("IV:", iv)
-        print("Data:", data)
+        #print("Salt:", salt)
+        #print("IV:", iv)
+        #print("Data:", data)
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA512(),
             length=32,
@@ -32,7 +32,7 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
         key = kdf.derive(password.encode())
         cipher = Cipher(algorithms.AES(key), modes.CTR(iv), backend=default_backend())
         decryptor = cipher.decryptor()
-        decrypted = decryptor.update(bytes.fromhex(data)) + decryptor.finalize()
+        decrypted = decryptor.update(data) + decryptor.finalize()
         decompressed = zlib.decompress(decrypted)
         return decompressed.decode('utf-8')
 
