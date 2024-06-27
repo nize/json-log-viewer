@@ -13,7 +13,12 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
-def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=None):
+def should_include_event(event, program_id=None, run_id=None):
+    """ Determine if the event should be included based on programId and runId. """
+    return (program_id is None or event.get('programId') == program_id) and \
+           (run_id is None or event.get('runId') == run_id)
+
+def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=None,program_id=None,run_id=None):
     """ Continuously parse the log file and update the event list. Optionally decrypts and decompresses the log file. """
     def decrypt_and_decompress(data:str, password:str) -> str:
         # Check if the encrypted data contains the expected segments
@@ -47,7 +52,8 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
                 try:
                     decrypted_data = decrypt_and_decompress(line.strip(), password)
                     event = json.loads(decrypted_data)
-                    event_list.append(event)
+                    if should_include_event(event, program_id, run_id):
+                        event_list.append(event)
                 except Exception as e:
                     print(f"Failed to decrypt and decompress log file: {e}")
                     return
@@ -56,7 +62,8 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
             for line in file:
                 try:
                     event = json.loads(line.strip())
-                    event_list.append(event)
+                    if should_include_event(event, program_id, run_id):
+                        event_list.append(event)
                 except json.JSONDecodeError as e:
                     print(f"Failed to decode line: {e}")
 
@@ -118,13 +125,22 @@ def display_events(stdscr, event_list):
             color_pair = level_color.get(level, 1)  # Default color if level is not matched
 
             # Determine if there are additional keys
-            expected_keys = {'level', 'message', 'ms', 'timestamp'}
+            expected_keys = {'level', 'message', 'ms', 'timestamp','programId','runId'}
             if set(event.keys()) - expected_keys:
                 connector = '+'
             else:
                 connector = '-'
 
-            display_str = f"{event.get('timestamp', 'N/A')} {connector} {event.get('message', 'No message')}"
+            timestamp = event.get('timestamp', 'N/A')
+            message = event.get('message', 'No message')
+            program_id = event.get('programId')
+            run_id = event.get('runId')
+            display_str = f"{timestamp} {connector}"
+            if program_id:
+                display_str += f" Program ID: {program_id}"
+            if run_id:
+                display_str += f" Run ID: {run_id}"
+            display_str += f" {message}"
             display_str = display_str[:width-1]  # Ensure string does not exceed screen width
 
             if idx == current_row:
@@ -201,21 +217,25 @@ def show_event_details(stdscr, event_list, current_row, width, height):
 
 def main():
     parser = argparse.ArgumentParser(description="Log Viewer")
-    parser.add_argument("logfile", help="Path to the log file")
+    parser.add_argument("--logfile", type=str, help="Path to the log file")
     parser.add_argument("--tail", action="store_true", help="Start in tail mode")
     parser.add_argument("--cleartext", action="store_true", help="Indicates the log file is in clear text")
+    parser.add_argument("--programId", type=str, help="Only show logs for the specified program ID")
+    parser.add_argument("--runId", type=str, help="Only show logs for the specified run ID")
     args = parser.parse_args()
 
     log_file_path = args.logfile
     tail_mode = args.tail
     cleartext = args.cleartext
+    program_id = args.programId
+    run_id = args.runId
     password = None
 
     if not cleartext:
         password = getpass.getpass(prompt="Enter password: ")
 
     event_list = []
-    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list, tail_mode, cleartext, password))
+    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list, tail_mode, cleartext, password,program_id,run_id))
     log_thread.daemon = True
     log_thread.start()
 
