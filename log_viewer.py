@@ -84,8 +84,8 @@ def display_events(stdscr, event_list):
     curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Info
     curses.init_pair(5, curses.COLOR_CYAN, curses.COLOR_BLACK)   # HTTP
     curses.init_pair(6, curses.COLOR_MAGENTA, curses.COLOR_BLACK)# Verbose
-    curses.init_pair(7, curses.COLOR_BLUE, curses.COLOR_BLACK)   # Debug
-    curses.init_pair(8, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Silly
+    curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_BLACK)   # Debug
+    curses.init_pair(8, curses.COLOR_BLUE, curses.COLOR_BLACK)  # Silly
 
     level_color = {
         'error': 2,
@@ -121,10 +121,14 @@ def display_events(stdscr, event_list):
             program_id = event.get('programId')
             run_id = event.get('runId')
             display_str = f"{timestamp} {connector}"
+            if program_id or run_id:
+                display_str += " ["
             if program_id:
-                display_str += f" Program ID: {program_id}"
+                display_str += f"P{program_id}"
             if run_id:
-                display_str += f" Run ID: {run_id}"
+                display_str += f"R{run_id}"
+            if program_id or run_id:
+                display_str += "]"
             display_str += f" {message}"
             display_str = display_str[:width-1]  # Ensure string does not exceed screen width
 
