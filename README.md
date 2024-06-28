@@ -11,6 +11,7 @@ Json Log Viewer is a Python-based command-line tool designed for efficient viewi
 - **Real-Time Monitoring**: Tail mode for viewing log events as they are generated.
 - **Reverse Order Display**: Shows the most recent log events first.
 - **Log Format Flexibility**: Works well with any JSON log format, expecting at least `timestamp` and `message` fields.
+- **Password-Protected Logs**: Supports password-protected log files. View the source code to understand the encryption method used.
 
 ## Example Log Format
 
@@ -41,14 +42,16 @@ Json Log Viewer is a Python-based command-line tool designed for efficient viewi
 Run the script with the path to your log file:
 
 ```bash
-python log_viewer.py /path/to/logfile.log
+python log_viewer.py --logfile /path/to/logfile.log
 ```
 
-For real-time log updates:
+View the help message for more options (like password-protection etc):
 
 ```bash
-python log_viewer.py /path/to/logfile.log --tail
+python log_viewer.py -h
 ```
+
+*Please review the source code and update if you want to customize the filtering parameters or the log format!*
 
 ### Navigation Keys
 
