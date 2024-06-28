@@ -46,14 +46,13 @@ def decrypt_and_decompress(data:str, password:str) -> str:
     return decompressed.decode('utf-8')
 
 def parse_log_file(file_path, event_list, cleartext=False, password=None, program_id=None, run_id=None):
-    """ Continuously parse the log file and update the event list. Optionally decrypts and decompresses the log file. """
-    file_position = os.path.getsize(file_path)  # Start reading from the end of the file
+    # Set the file position to start based on whether you want to see historical data or not
+    file_position = 0  # Change this to `os.path.getsize(file_path)` to start at the end
     with open(file_path, 'r') as file:
         file.seek(file_position)
         while True:
             line = file.readline()
             if line:
-                file_position = file.tell()  # Update position after reading a line
                 if not cleartext:
                     try:
                         decrypted_data = decrypt_and_decompress(line.strip(), password)
@@ -70,8 +69,9 @@ def parse_log_file(file_path, event_list, cleartext=False, password=None, progra
 
                 if should_include_event(event, program_id, run_id):
                     event_list.insert(0, event)  # Prepend new event to the list
+                    print(f"Added event: {event}")  # Debug output
             else:
-                time.sleep(0.1)  # Wait before trying to read new data
+                time.sleep(0.1)  # Reduce CPU usage
 
 def display_events(stdscr, event_list):
     """ Display events in a scrollable list using curses. """
