@@ -69,7 +69,7 @@ def parse_log_file(file_path, event_list, cleartext=False, password=None, progra
 
                 if should_include_event(event, program_id, run_id):
                     event_list.insert(0, event)  # Prepend new event to the list
-                    print(f"Added event: {event}")  # Debug output
+                    #print(f"Added event: {event}")  # Debug output
             else:
                 time.sleep(0.1)  # Reduce CPU usage
 
