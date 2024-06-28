@@ -15,9 +15,10 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 def should_include_event(event, program_id=None, run_id=None):
-    """ Determine if the event should be included based on programId and runId. """
-    return (program_id is None or event.get('programId') == program_id) and \
-           (run_id is None or event.get('runId') == run_id)
+    event_program_id = str(event.get('programId', ''))
+    event_run_id = str(event.get('runId', ''))
+    return (program_id is None or event_program_id == str(program_id)) and \
+           (run_id is None or event_run_id == str(run_id))
 
 def decrypt_and_decompress(data:str, password:str) -> str:
     # Check if the encrypted data contains the expected segments
