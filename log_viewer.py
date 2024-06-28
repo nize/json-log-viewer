@@ -48,7 +48,7 @@ def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=N
 
     if not cleartext:
         with open(file_path, 'r') as file:
-            for line in file:
+            for line in reversed(file):
                 try:
                     decrypted_data = decrypt_and_decompress(line.strip(), password)
                     event = json.loads(decrypted_data)
