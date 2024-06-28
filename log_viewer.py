@@ -8,6 +8,7 @@ import time
 import zlib
 import gzip
 import io
+import os
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
@@ -18,76 +19,59 @@ def should_include_event(event, program_id=None, run_id=None):
     return (program_id is None or event.get('programId') == program_id) and \
            (run_id is None or event.get('runId') == run_id)
 
-def parse_log_file(file_path, event_list, tail_mode, cleartext=False, password=None,program_id=None,run_id=None):
+def decrypt_and_decompress(data:str, password:str) -> str:
+    # Check if the encrypted data contains the expected segments
+    if ':' not in data:
+        print("Encrypted data format error: Expected segments not found.")
+        return
+    salt, iv, data = map(bytes.fromhex, data.split(':'))
+    #print("Salt:", salt)
+    #print("IV:", iv)
+    #print("Data:", data)
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA512(),
+        length=32,
+        salt=salt,
+        iterations=100000,
+        backend=default_backend()
+    )
+    key = kdf.derive(password.encode())
+    cipher = Cipher(algorithms.AES(key), modes.CTR(iv), backend=default_backend())
+    decryptor = cipher.decryptor()
+    decrypted = decryptor.update(data) + decryptor.finalize()
+    # Decompress using gzip
+    with gzip.GzipFile(fileobj=io.BytesIO(decrypted), mode='rb') as gzip_file:
+        decompressed = gzip_file.read()
+    
+    return decompressed.decode('utf-8')
+
+def parse_log_file(file_path, event_list, cleartext=False, password=None, program_id=None, run_id=None):
     """ Continuously parse the log file and update the event list. Optionally decrypts and decompresses the log file. """
-    def decrypt_and_decompress(data:str, password:str) -> str:
-        # Check if the encrypted data contains the expected segments
-        if ':' not in data:
-            print("Encrypted data format error: Expected segments not found.")
-            return
-        salt, iv, data = map(bytes.fromhex, data.split(':'))
-        #print("Salt:", salt)
-        #print("IV:", iv)
-        #print("Data:", data)
-        kdf = PBKDF2HMAC(
-            algorithm=hashes.SHA512(),
-            length=32,
-            salt=salt,
-            iterations=100000,
-            backend=default_backend()
-        )
-        key = kdf.derive(password.encode())
-        cipher = Cipher(algorithms.AES(key), modes.CTR(iv), backend=default_backend())
-        decryptor = cipher.decryptor()
-        decrypted = decryptor.update(data) + decryptor.finalize()
-        # Decompress using gzip
-        with gzip.GzipFile(fileobj=io.BytesIO(decrypted), mode='rb') as gzip_file:
-            decompressed = gzip_file.read()
-        
-        return decompressed.decode('utf-8')
-
-    if not cleartext:
-        with open(file_path, 'r') as file:
-            for line in reversed(file):
-                try:
-                    decrypted_data = decrypt_and_decompress(line.strip(), password)
-                    event = json.loads(decrypted_data)
-                    if should_include_event(event, program_id, run_id):
-                        event_list.append(event)
-                except Exception as e:
-                    print(f"Failed to decrypt and decompress log file: {e}")
-                    return
-    else:
-        with open(file_path, 'r') as file:
-            for line in file:
-                try:
-                    event = json.loads(line.strip())
-                    if should_include_event(event, program_id, run_id):
-                        event_list.append(event)
-                except json.JSONDecodeError as e:
-                    print(f"Failed to decode line: {e}")
-
-"""     if not tail_mode:
-        for line in reversed(lines):
-            try:
-                event = json.loads(line)
-                event_list.append(event)
-            except json.JSONDecodeError:
-                continue
-    else:
-        # For tail mode, start reading from the end of the file
-        with open(file_path, 'r') as file:
-            file.seek(0, 2)  # Move to the end of the file
-            while True:
-                line = file.readline()
-                if line:
+    file_position = os.path.getsize(file_path)  # Start reading from the end of the file
+    with open(file_path, 'r') as file:
+        file.seek(file_position)
+        while True:
+            line = file.readline()
+            if line:
+                file_position = file.tell()  # Update position after reading a line
+                if not cleartext:
                     try:
-                        event = json.loads(line)
-                        event_list.insert(0, event)  # Prepend new event
-                    except json.JSONDecodeError:
+                        decrypted_data = decrypt_and_decompress(line.strip(), password)
+                        event = json.loads(decrypted_data)
+                    except Exception as e:
+                        print(f"Failed to decrypt and decompress log file: {e}")
                         continue
                 else:
-                    time.sleep(0.1) """
+                    try:
+                        event = json.loads(line.strip())
+                    except json.JSONDecodeError as e:
+                        print(f"Failed to decode line: {e}")
+                        continue
+
+                if should_include_event(event, program_id, run_id):
+                    event_list.insert(0, event)  # Prepend new event to the list
+            else:
+                time.sleep(0.1)  # Wait before trying to read new data
 
 def display_events(stdscr, event_list):
     """ Display events in a scrollable list using curses. """
@@ -217,29 +201,27 @@ def show_event_details(stdscr, event_list, current_row, width, height):
 
 def main():
     parser = argparse.ArgumentParser(description="Log Viewer")
-    parser.add_argument("--logfile", type=str, help="Path to the log file")
-    parser.add_argument("--tail", action="store_true", help="Start in tail mode")
+    parser.add_argument("--logfile", type=str, required=True, help="Path to the log file")
     parser.add_argument("--cleartext", action="store_true", help="Indicates the log file is in clear text")
     parser.add_argument("--programId", type=str, help="Only show logs for the specified program ID")
     parser.add_argument("--runId", type=str, help="Only show logs for the specified run ID")
     args = parser.parse_args()
 
     log_file_path = args.logfile
-    tail_mode = args.tail
     cleartext = args.cleartext
     program_id = args.programId
     run_id = args.runId
     password = None
 
     if not cleartext:
-        password = getpass.getpass(prompt="Enter password: ")
+        password = getpass.getpass(prompt="Enter password: ")  # Securely get the password
 
     event_list = []
-    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list, tail_mode, cleartext, password,program_id,run_id))
+    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list, cleartext, password, program_id, run_id))
     log_thread.daemon = True
     log_thread.start()
 
-    curses.wrapper(display_events, event_list)
+    curses.wrapper(display_events, event_list)  # Use curses to handle the terminal display
 
 if __name__ == "__main__":
     main()
