@@ -9,6 +9,7 @@ import zlib
 import gzip
 import io
 import os
+import queue
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
@@ -46,35 +47,32 @@ def decrypt_and_decompress(data:str, password:str) -> str:
     
     return decompressed.decode('utf-8')
 
-def parse_log_file(file_path, event_list, cleartext=False, password=None, program_id=None, run_id=None):
-    # Set the file position to start based on whether you want to see historical data or not
-    file_position = 0  # Change this to `os.path.getsize(file_path)` to start at the end
+def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None):
     with open(file_path, 'r') as file:
-        file.seek(file_position)
+        # Read lines from file, reverse the order
+        file.seek(0, os.SEEK_END)  # Start at the end of the file
         while True:
             line = file.readline()
-            if line:
-                if not cleartext:
-                    try:
-                        decrypted_data = decrypt_and_decompress(line.strip(), password)
-                        event = json.loads(decrypted_data)
-                    except Exception as e:
-                        print(f"Failed to decrypt and decompress log file: {e}")
-                        continue
-                else:
-                    try:
-                        event = json.loads(line.strip())
-                    except json.JSONDecodeError as e:
-                        print(f"Failed to decode line: {e}")
-                        continue
-
-                if should_include_event(event, program_id, run_id):
-                    event_list.insert(0, event)  # Prepend new event to the list
-                    #print(f"Added event: {event}")  # Debug output
+            if not line.strip():
+                continue  # Skip empty lines
+            if not cleartext:
+                try:
+                    decrypted_data = decrypt_and_decompress(line.strip(), password)
+                    event = json.loads(decrypted_data)
+                except Exception as e:
+                    print(f"Failed to decrypt and decompress log file: {e}")
+                    continue
             else:
-                time.sleep(0.1)  # Reduce CPU usage
+                try:
+                    event = json.loads(line.strip())
+                except json.JSONDecodeError as e:
+                    print(f"Failed to decode line: {e}")
+                    continue
 
-def display_events(stdscr, event_list):
+            if should_include_event(event, program_id, run_id):
+                event_queue.put(event)
+
+def display_events(stdscr, event_queue):
     """ Display events in a scrollable list using curses. """
     curses.curs_set(0)
     # Define color pairs for each log level
@@ -97,12 +95,25 @@ def display_events(stdscr, event_list):
         'silly': 8
     }
 
+    event_list = []
     current_row = 0
     offset = 0
+    new_data_available = False  # Flag to indicate new data is available
 
     while True:
         stdscr.clear()
         height, width = stdscr.getmaxyx()
+
+        # Try to get new events from the queue
+        try:
+            while True:  # Drain the queue if there are multiple entries
+                event = event_queue.get_nowait()
+                event_list.insert(0, event)
+                if current_row > 0:
+                    new_data_available = True  # Set flag if not at the top
+                event_queue.task_done()
+        except queue.Empty:
+            pass  # No more events to process at this moment
 
         for idx in range(offset, min(offset + height, len(event_list))):
             event = event_list[idx]
@@ -140,6 +151,10 @@ def display_events(stdscr, event_list):
                 stdscr.attron(curses.color_pair(color_pair))
                 stdscr.addstr(idx - offset, 0, display_str)
                 stdscr.attroff(curses.color_pair(color_pair))
+
+        # Show notification if new data is available and user is not at the top
+        if new_data_available:
+            stdscr.addstr(height - 1, 0, "New logs are available. Scroll to top to view.", curses.color_pair(3) | curses.A_BOLD)
 
         key = stdscr.getch()
 
@@ -219,14 +234,14 @@ def main():
     password = None
 
     if not cleartext:
-        password = getpass.getpass(prompt="Enter password: ")  # Securely get the password
+        password = getpass.getpass(prompt="Enter support key: ")  # Securely get the password
 
-    event_list = []
-    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_list, cleartext, password, program_id, run_id))
+    event_queue = queue.Queue()
+    log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_queue, cleartext, password, program_id, run_id))
     log_thread.daemon = True
     log_thread.start()
 
-    curses.wrapper(display_events, event_list)  # Use curses to handle the terminal display
+    curses.wrapper(display_events, event_queue)  # Use curses to handle the terminal display
 
 if __name__ == "__main__":
     main()
