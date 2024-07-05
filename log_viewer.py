@@ -47,30 +47,57 @@ def decrypt_and_decompress(data:str, password:str) -> str:
     
     return decompressed.decode('utf-8')
 
-def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None):
+def process_line(line, event_queue, cleartext, password, program_id, run_id):
+    if not line.strip():
+        return  # Ignore empty lines
+    if not cleartext:
+        try:
+            decrypted_data = decrypt_and_decompress(line.strip(), password)
+            event = json.loads(decrypted_data)
+        except Exception as e:
+            print(f"Failed to decrypt and decompress log file: {e}")
+            return
+    else:
+        try:
+            event = json.loads(line.strip())
+        except json.JSONDecodeError as e:
+            print(f"Failed to decode line: {e}")
+            return
+
+    if should_include_event(event, program_id, run_id):
+        event_queue.put(event)  # Add the event to the queue
+
+def read_last_lines(file, n=100):
+    """Read the last n lines of a file without loading the whole file into memory."""
+    with file:
+        file.seek(0, os.SEEK_END)
+        end_file = file.tell()
+        lines = ['']
+        while len(lines) <= n and file.tell() > 0:
+            file.seek(-2, os.SEEK_CUR)
+            if file.read(1) == '\n':
+                lines.insert(0, file.readline().strip())
+                file.seek(-1, os.SEEK_CUR)
+        if file.tell() == 0:
+            file.seek(0)
+            lines.insert(0, file.readline().strip())
+    return lines
+
+def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None, lines=100):
     with open(file_path, 'r') as file:
-        # Read lines from file, reverse the order
-        file.seek(0, os.SEEK_END)  # Start at the end of the file
+        # Read the specified number of lines from the end
+        file.seek(0, os.SEEK_END)
+        lines_to_read = read_last_lines(file, lines)
+        for line in reversed(lines_to_read):
+            process_line(line, event_queue, cleartext, password, program_id, run_id)
+
+        # Listen for new lines
         while True:
             line = file.readline()
-            if not line.strip():
-                continue  # Skip empty lines
-            if not cleartext:
-                try:
-                    decrypted_data = decrypt_and_decompress(line.strip(), password)
-                    event = json.loads(decrypted_data)
-                except Exception as e:
-                    print(f"Failed to decrypt and decompress log file: {e}")
-                    continue
+            if line:
+                process_line(line, event_queue, cleartext, password, program_id, run_id)
             else:
-                try:
-                    event = json.loads(line.strip())
-                except json.JSONDecodeError as e:
-                    print(f"Failed to decode line: {e}")
-                    continue
-
-            if should_include_event(event, program_id, run_id):
-                event_queue.put(event)
+                time.sleep(0.1)  # Sleep to wait for new lines
 
 def display_events(stdscr, event_queue):
     """ Display events in a scrollable list using curses. """
@@ -99,6 +126,9 @@ def display_events(stdscr, event_queue):
     current_row = 0
     offset = 0
     new_data_available = False  # Flag to indicate new data is available
+
+    stdscr.nodelay(True)  # Set getch to be non-blocking
+    stdscr.timeout(100)  # Refresh every 100 milliseconds
 
     while True:
         stdscr.clear()
@@ -158,7 +188,10 @@ def display_events(stdscr, event_queue):
 
         key = stdscr.getch()
 
-        if key in [curses.KEY_UP, ord('w')] and current_row > 0:
+        if key == -1:
+            # No key was pressed, continue updating the screen
+            continue
+        elif key in [curses.KEY_UP, ord('w')] and current_row > 0:
             current_row -= 1
             offset = max(0, current_row - height + 1)
         elif key in [curses.KEY_DOWN, ord('s')] and current_row < len(event_list) - 1:
