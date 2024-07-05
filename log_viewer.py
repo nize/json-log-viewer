@@ -74,19 +74,21 @@ def read_last_lines(file_path, n=100):
     """Read the last n lines of a file without loading the whole file into memory."""
     lines = []
     with open(file_path, 'rb') as file:  # Open in binary mode
-        file.seek(0, os.SEEK_END)
+        file.seek(0, os.SEEK_END)  # Go to the end of the file
         position = file.tell()
+        
         while position > 0 and len(lines) < n:
             position -= 1
             file.seek(position)
             if file.read(1) == b'\n':
-                if len(lines) > 0:  # Skip reading beyond the last line (we started at the end of the file)
+                if position < file.tell() - 1:  # Check if this is not just after another newline
+                    file.seek(position + 1)  # Move to right after the newline
                     lines.append(file.readline().decode('utf-8').strip())
-                file.seek(position)  # Move back to the right place to find the next newline
+        
         if position == 0:  # We are at the start of the file, read the first line
             file.seek(0)
             lines.append(file.readline().decode('utf-8').strip())
-
+    
     return lines[::-1]  # Return reversed list to maintain order of last N lines
 
 def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None, lines=100):
