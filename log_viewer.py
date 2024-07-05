@@ -87,6 +87,7 @@ def read_last_lines(file, n=100):
     return lines
 
 def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None, lines=100):
+    print("Thread started, parsing log file...")
     with open(file_path, 'r') as file:
         # Read the specified number of lines from the end
         file.seek(0, os.SEEK_END)
@@ -99,6 +100,7 @@ def parse_log_file(file_path, event_queue, cleartext=False, password=None, progr
         while True:
             line = file.readline()
             if line:
+                print("Reading line:", line.strip())
                 process_line(line, event_queue, cleartext, password, program_id, run_id)
             else:
                 time.sleep(0.1)  # Sleep to wait for new lines
@@ -277,7 +279,9 @@ def main():
     event_queue = queue.Queue()
     log_thread = threading.Thread(target=parse_log_file, args=(log_file_path, event_queue, cleartext, password, program_id, run_id))
     log_thread.daemon = True
+    print("Starting thread...")
     log_thread.start()
+    log_thread.join() # For testing purposes
 
     curses.wrapper(display_events, event_queue)  # Use curses to handle the terminal display
 
