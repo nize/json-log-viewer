@@ -70,37 +70,37 @@ def process_line(line, event_queue, cleartext, password, program_id, run_id):
         event_queue.put(event)  # Add the event to the queue
         print("Event added to queue:", event)
 
-def read_last_lines(file, n=100):
+def read_last_lines(file_path, n=100):
     """Read the last n lines of a file without loading the whole file into memory."""
-    with file:
+    lines = []
+    with open(file_path, 'rb') as file:  # Open in binary mode
         file.seek(0, os.SEEK_END)
         end_file = file.tell()
-        lines = ['']
-        while len(lines) <= n and file.tell() > 0:
-            file.seek(-2, os.SEEK_CUR)
-            if file.read(1) == '\n':
-                lines.insert(0, file.readline().strip())
-                file.seek(-1, os.SEEK_CUR)
+        file.seek(0)  # Start at the beginning of the file
         if file.tell() == 0:
-            file.seek(0)
-            lines.insert(0, file.readline().strip())
-    return lines
+            file.seek(0)  # Go to the start of the file
+        while len(lines) <= n and file.tell() < end_file:
+            file.seek(-2, os.SEEK_CUR)
+            if file.read(1) == b'\n':
+                lines.append(file.readline().decode('utf-8').strip())
+                file.seek(-2, os.SEEK_CUR)
+        if file.tell() == 0:
+            lines.append(file.readline().decode('utf-8').strip())
+
+    return lines[::-1]  # Return reversed list to maintain order of last N lines
 
 def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None, lines=100):
-    print("Thread started, parsing log file...")
-    with open(file_path, 'r') as file:
-        # Read the specified number of lines from the end
-        file.seek(0, os.SEEK_END)
-        lines_to_read = read_last_lines(file, lines)
-        print("Read last lines:", lines_to_read)
-        for line in reversed(lines_to_read):
-            process_line(line, event_queue, cleartext, password, program_id, run_id)
+    # Read the specified number of lines from the end
+    lines_to_read = read_last_lines(file_path, lines)
+    for line in lines_to_read:
+        process_line(line, event_queue, cleartext, password, program_id, run_id)
 
-        # Listen for new lines
+    # Listen for new lines
+    with open(file_path, 'r') as file:  # Open in text mode for ongoing reading
+        file.seek(0, os.SEEK_END)  # Start at the end of the file
         while True:
             line = file.readline()
             if line:
-                print("Reading line:", line.strip())
                 process_line(line, event_queue, cleartext, password, program_id, run_id)
             else:
                 time.sleep(0.1)  # Sleep to wait for new lines
