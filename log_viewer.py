@@ -54,18 +54,21 @@ def process_line(line, event_queue, cleartext, password, program_id, run_id):
         try:
             decrypted_data = decrypt_and_decompress(line.strip(), password)
             event = json.loads(decrypted_data)
+            print("Processed event:", event) 
         except Exception as e:
             print(f"Failed to decrypt and decompress log file: {e}")
             return
     else:
         try:
             event = json.loads(line.strip())
+            print("Processed event:", event)
         except json.JSONDecodeError as e:
             print(f"Failed to decode line: {e}")
             return
 
     if should_include_event(event, program_id, run_id):
         event_queue.put(event)  # Add the event to the queue
+        print("Event added to queue:", event)
 
 def read_last_lines(file, n=100):
     """Read the last n lines of a file without loading the whole file into memory."""
@@ -88,6 +91,7 @@ def parse_log_file(file_path, event_queue, cleartext=False, password=None, progr
         # Read the specified number of lines from the end
         file.seek(0, os.SEEK_END)
         lines_to_read = read_last_lines(file, lines)
+        print("Read last lines:", lines_to_read)
         for line in reversed(lines_to_read):
             process_line(line, event_queue, cleartext, password, program_id, run_id)
 
@@ -139,6 +143,7 @@ def display_events(stdscr, event_queue):
             while True:  # Drain the queue if there are multiple entries
                 event = event_queue.get_nowait()
                 event_list.insert(0, event)
+                print("Event displayed:", event)
                 if current_row > 0:
                     new_data_available = True  # Set flag if not at the top
                 event_queue.task_done()
