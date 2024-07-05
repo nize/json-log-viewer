@@ -75,16 +75,16 @@ def read_last_lines(file_path, n=100):
     lines = []
     with open(file_path, 'rb') as file:  # Open in binary mode
         file.seek(0, os.SEEK_END)
-        end_file = file.tell()
-        file.seek(0)  # Start at the beginning of the file
-        if file.tell() == 0:
-            file.seek(0)  # Go to the start of the file
-        while len(lines) <= n and file.tell() < end_file:
-            file.seek(-2, os.SEEK_CUR)
+        position = file.tell()
+        while position > 0 and len(lines) < n:
+            position -= 1
+            file.seek(position)
             if file.read(1) == b'\n':
-                lines.append(file.readline().decode('utf-8').strip())
-                file.seek(-2, os.SEEK_CUR)
-        if file.tell() == 0:
+                if len(lines) > 0:  # Skip reading beyond the last line (we started at the end of the file)
+                    lines.append(file.readline().decode('utf-8').strip())
+                file.seek(position)  # Move back to the right place to find the next newline
+        if position == 0:  # We are at the start of the file, read the first line
+            file.seek(0)
             lines.append(file.readline().decode('utf-8').strip())
 
     return lines[::-1]  # Return reversed list to maintain order of last N lines
