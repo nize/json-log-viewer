@@ -283,7 +283,7 @@ def main():
     log_thread.daemon = True
     #print("Starting thread...")
     log_thread.start()
-    log_thread.join() # For testing purposes
+    #log_thread.join() # For testing purposes
 
     curses.wrapper(display_events, event_queue)  # Use curses to handle the terminal display
 
