@@ -72,24 +72,22 @@ def process_line(line, event_queue, cleartext, password, program_id, run_id):
 
 def read_last_lines(file_path, n=100):
     """Read the last n lines of a file without loading the whole file into memory."""
-    lines = []
-    with open(file_path, 'rb') as file:  # Open in binary mode
-        file.seek(0, os.SEEK_END)  # Go to the end of the file
-        position = file.tell()
-        
+    with open(file_path, 'rb') as file:
+        file.seek(0, os.SEEK_END)
+        end_position = file.tell()
+        position = end_position
+        lines = []
         while position > 0 and len(lines) < n:
             position -= 1
             file.seek(position)
             if file.read(1) == b'\n':
-                if position < file.tell() - 1:  # Check if this is not just after another newline
-                    file.seek(position + 1)  # Move to right after the newline
+                if position != end_position - 1:  # Avoid empty line at the end
+                    file.seek(position + 1)
                     lines.append(file.readline().decode('utf-8').strip())
-        
-        if position == 0:  # We are at the start of the file, read the first line
+        if position == 0 and end_position > 0:  # Read the first line if it wasn't
             file.seek(0)
             lines.append(file.readline().decode('utf-8').strip())
-    
-    return lines[::-1]  # Return reversed list to maintain order of last N lines
+        return lines[::-1]  # Correct order of lines
 
 def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None, lines=100):
     # Read the specified number of lines from the end
