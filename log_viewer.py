@@ -148,6 +148,8 @@ def display_events(stdscr, event_queue):
                 #print("Event displayed:", event)
                 if current_row > 0:
                     new_data_available = True  # Set flag if not at the top
+                else:
+                    new_data_available = False
                 event_queue.task_done()
         except queue.Empty:
             pass  # No more events to process at this moment
@@ -190,7 +192,10 @@ def display_events(stdscr, event_queue):
                 stdscr.attroff(curses.color_pair(color_pair))
 
         # Show notification if new data is available and user is not at the top
-        if new_data_available:
+        if current_row == 0:
+            new_data_available = False
+
+        if new_data_available and current_row > 0:
             stdscr.addstr(height - 1, 0, "New logs are available. Scroll to top to view.", curses.color_pair(3) | curses.A_BOLD)
 
         key = stdscr.getch()
