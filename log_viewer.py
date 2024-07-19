@@ -176,7 +176,7 @@ def display_events(stdscr, event_queue):
     current_row = 0
     offset = 0
     new_data_available = False
-    new_events_count = 0
+    new_events = []
 
     stdscr.nodelay(True)
     stdscr.timeout(100)
@@ -192,26 +192,25 @@ def display_events(stdscr, event_queue):
         should_redraw = False
 
         # Check for new events
-        new_events = []
         while not event_queue.empty():
             event = event_queue.get_nowait()
-            new_events.append(event)
+            new_events.insert(0, event)
             event_queue.task_done()
 
         if new_events:
-            if current_row == 0:
+            if current_row == 0 and offset == 0:
                 event_list = new_events + event_list
+                new_events = []
                 should_redraw = True
             else:
                 new_data_available = True
-                new_events_count += len(new_events)
 
         key = stdscr.getch()
 
         if key == -1:
             if should_redraw:
                 stdscr.clear()
-                draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count)
+                draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, len(new_events))
                 stdscr.refresh()
             continue
         elif key in [curses.KEY_UP, ord('w')]:
@@ -219,6 +218,11 @@ def display_events(stdscr, event_queue):
                 current_row -= 1
                 if current_row < offset:
                     offset = current_row
+                should_redraw = True
+            elif new_events:
+                event_list = new_events + event_list
+                new_events = []
+                new_data_available = False
                 should_redraw = True
         elif key in [curses.KEY_DOWN, ord('s')]:
             if current_row < len(event_list) - 1:
@@ -242,15 +246,14 @@ def display_events(stdscr, event_queue):
 
         if should_redraw or new_data_available:
             stdscr.clear()
-            draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count)
+            draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, len(new_events))
             stdscr.refresh()
 
-        if current_row == 0:
+        if current_row == 0 and offset == 0 and new_events:
+            event_list = new_events + event_list
+            new_events = []
             new_data_available = False
-            if new_events_count > 0:
-                event_list = new_events + event_list
-                new_events_count = 0
-                should_redraw = True
+            should_redraw = True
 
 
 def show_event_details(stdscr, event_list, current_row, width, height):
