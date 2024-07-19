@@ -116,7 +116,7 @@ level_color = {
     'silly': 8
 }
 
-def draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available):
+def draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count):
     for idx in range(offset, min(offset + height, len(event_list))):
         event = event_list[idx]
         level = event.get('level', '').lower()
@@ -153,9 +153,9 @@ def draw_events(stdscr, event_list, current_row, offset, height, width, new_data
                 stdscr.addstr(y_pos, 0, display_str)
                 stdscr.attroff(curses.color_pair(color_pair))
 
-    if new_data_available and current_row > 0:
+    if new_data_available and new_events_count > 0:
         stdscr.attron(curses.color_pair(3) | curses.A_BOLD)
-        stdscr.addstr(height - 1, 0, "New logs are available. Scroll to top to view.")
+        stdscr.addstr(height - 1, 0, f"{new_events_count} new log(s) available. Scroll to top to view.")
         stdscr.attroff(curses.color_pair(3) | curses.A_BOLD)
 
 def display_events(stdscr, event_queue):
@@ -176,6 +176,7 @@ def display_events(stdscr, event_queue):
     current_row = 0
     offset = 0
     new_data_available = False
+    new_events_count = 0
 
     stdscr.nodelay(True)
     stdscr.timeout(100)
@@ -191,21 +192,26 @@ def display_events(stdscr, event_queue):
         should_redraw = False
 
         # Check for new events
+        new_events = []
         while not event_queue.empty():
             event = event_queue.get_nowait()
-            event_list.insert(0, event)
-            if current_row > 0 or offset > 0:
-                new_data_available = True
-            else:
-                should_redraw = True
+            new_events.append(event)
             event_queue.task_done()
+
+        if new_events:
+            if current_row == 0:
+                event_list = new_events + event_list
+                should_redraw = True
+            else:
+                new_data_available = True
+                new_events_count += len(new_events)
 
         key = stdscr.getch()
 
         if key == -1:
             if should_redraw:
                 stdscr.clear()
-                draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available)
+                draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count)
                 stdscr.refresh()
             continue
         elif key in [curses.KEY_UP, ord('w')]:
@@ -236,11 +242,15 @@ def display_events(stdscr, event_queue):
 
         if should_redraw or new_data_available:
             stdscr.clear()
-            draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available)
+            draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count)
             stdscr.refresh()
 
-        if current_row == 0 and offset == 0:
+        if current_row == 0:
             new_data_available = False
+            if new_events_count > 0:
+                event_list = new_events + event_list
+                new_events_count = 0
+                should_redraw = True
 
 
 def show_event_details(stdscr, event_list, current_row, width, height):
