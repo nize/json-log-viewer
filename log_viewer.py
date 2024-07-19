@@ -164,13 +164,13 @@ def display_events(stdscr, event_queue):
     curses.use_default_colors()  # Use the terminal's default colors
     # Define color pairs for each log level
     curses.init_pair(1, curses.COLOR_WHITE, -1)  # Default
-    curses.init_pair(2, curses.COLOR_RED, -1)    # Error
+    curses.init_pair(2, curses.COLOR_RED | curses.A_BOLD, -1)    # Error
     curses.init_pair(3, curses.COLOR_YELLOW, -1) # Warn
     curses.init_pair(4, curses.COLOR_GREEN, -1)  # Info
-    curses.init_pair(5, curses.COLOR_CYAN, -1)   # HTTP
+    curses.init_pair(5, curses.COLOR_BLUE | curses.A_BOLD, -1)   # HTTP
     curses.init_pair(6, curses.COLOR_MAGENTA, -1)# Verbose
     curses.init_pair(7, curses.COLOR_WHITE, -1)   # Debug
-    curses.init_pair(8, curses.COLOR_BLUE, -1)  # Silly
+    curses.init_pair(8, curses.COLOR_CYAN, -1)  # Silly
 
     event_list = []
     current_row = 0
@@ -276,9 +276,9 @@ def show_event_details(stdscr, event_list, current_row, width, height):
                 line = wrapped_lines[line_idx]
                 if line.strip().startswith('"') and ':' in line:
                     key, value = line.split(':', 1)
-                    stdscr.attron(curses.color_pair(6))  # Verbose for JSON keys, set as light green earlier
+                    stdscr.attron(curses.color_pair(4))  # Verbose for JSON keys, set as light green earlier
                     stdscr.addstr(i, 0, key + ':')
-                    stdscr.attroff(curses.color_pair(6))
+                    stdscr.attroff(curses.color_pair(4))
                     if i < height - 1:
                         stdscr.addstr(value)
                 else:
