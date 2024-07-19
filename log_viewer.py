@@ -105,6 +105,16 @@ def parse_log_file(file_path, event_queue, cleartext=False, password=None, progr
             else:
                 time.sleep(0.1)  # Sleep to wait for new lines
 
+level_color = {
+    'error': 2,
+    'warn': 3,
+    'info': 4,
+    'http': 5,
+    'verbose': 6,
+    'debug': 7,
+    'silly': 8
+}
+
 def draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available):
     for idx in range(offset, min(offset + height, len(event_list))):
         event = event_list[idx]
@@ -157,16 +167,6 @@ def display_events(stdscr, event_queue):
     curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_BLACK)   # Debug
     curses.init_pair(8, curses.COLOR_BLUE, curses.COLOR_BLACK)  # Silly
 
-    level_color = {
-        'error': 2,
-        'warn': 3,
-        'info': 4,
-        'http': 5,
-        'verbose': 6,
-        'debug': 7,
-        'silly': 8
-    }
-
     event_list = []
     current_row = 0
     offset = 0
@@ -200,21 +200,25 @@ def display_events(stdscr, event_queue):
 
         if key == -1:
             continue
-        elif key in [curses.KEY_UP, ord('w')] and current_row > 0:
-            current_row -= 1
-            offset = max(0, current_row - height + 1)
-            should_redraw = True
-        elif key in [curses.KEY_DOWN, ord('s')] and current_row < len(event_list) - 1:
-            current_row += 1
-            offset = max(0, current_row - height + 1)
-            should_redraw = True
+        elif key in [curses.KEY_UP, ord('w')]:
+            if current_row > 0:
+                current_row -= 1
+                if current_row < offset:
+                    offset = current_row
+                should_redraw = True
+        elif key in [curses.KEY_DOWN, ord('s')]:
+            if current_row < len(event_list) - 1:
+                current_row += 1
+                if current_row >= offset + height:
+                    offset = current_row - height + 1
+                should_redraw = True
         elif key == curses.KEY_PPAGE:
             current_row = max(0, current_row - height)
             offset = max(0, offset - height)
             should_redraw = True
         elif key == curses.KEY_NPAGE:
             current_row = min(len(event_list) - 1, current_row + height)
-            offset = min(max(0, len(event_list) - height), offset + height)
+            offset = min(max(0, len(event_list) - height), current_row)
             should_redraw = True
         elif key == ord('q'):
             break
@@ -229,6 +233,7 @@ def display_events(stdscr, event_queue):
 
         if current_row == 0:
             new_data_available = False
+
 
 def show_event_details(stdscr, event_list, current_row, width, height):
     """ Display detailed JSON event data with formatted keys. """
