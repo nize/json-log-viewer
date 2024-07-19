@@ -197,13 +197,12 @@ def display_events(stdscr, event_queue):
             new_events.insert(0, event)
             event_queue.task_done()
 
-        if new_events:
-            if current_row == 0 and offset == 0:
-                event_list = new_events + event_list
-                new_events = []
-                should_redraw = True
-            else:
-                new_data_available = True
+        if new_events and current_row == 0 and offset == 0:
+            event_list = new_events + event_list
+            new_events = []
+            should_redraw = True
+        elif new_events:
+            new_data_available = True
 
         key = stdscr.getch()
 
@@ -221,6 +220,8 @@ def display_events(stdscr, event_queue):
                 should_redraw = True
             elif new_events:
                 event_list = new_events + event_list
+                current_row = len(new_events) - 1
+                offset = max(0, current_row - height + 1)
                 new_events = []
                 new_data_available = False
                 should_redraw = True
@@ -231,8 +232,15 @@ def display_events(stdscr, event_queue):
                     offset = current_row - height + 1
                 should_redraw = True
         elif key == curses.KEY_PPAGE:
-            current_row = max(0, current_row - height)
-            offset = max(0, offset - height)
+            if current_row > 0:
+                current_row = max(0, current_row - height)
+                offset = max(0, offset - height)
+            elif new_events:
+                event_list = new_events + event_list
+                current_row = len(new_events) - 1
+                offset = max(0, current_row - height + 1)
+                new_events = []
+                new_data_available = False
             should_redraw = True
         elif key == curses.KEY_NPAGE:
             current_row = min(len(event_list) - 1, current_row + height)
@@ -248,13 +256,6 @@ def display_events(stdscr, event_queue):
             stdscr.clear()
             draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, len(new_events))
             stdscr.refresh()
-
-        if current_row == 0 and offset == 0 and new_events:
-            event_list = new_events + event_list
-            new_events = []
-            new_data_available = False
-            should_redraw = True
-
 
 def show_event_details(stdscr, event_list, current_row, width, height):
     """ Display detailed JSON event data with formatted keys. """
