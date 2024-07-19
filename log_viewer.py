@@ -105,6 +105,7 @@ def parse_log_file(file_path, event_queue, cleartext=False, password=None, progr
             else:
                 time.sleep(0.1)  # Sleep to wait for new lines
 
+# Define this at the module level, outside of any function
 level_color = {
     'error': 2,
     'warn': 3,
@@ -141,31 +142,35 @@ def draw_events(stdscr, event_list, current_row, offset, height, width, new_data
         display_str += f" {message}"
         display_str = display_str[:width-1]  # Ensure string does not exceed screen width
 
-        if idx == current_row:
-            stdscr.attron(curses.color_pair(color_pair) | curses.A_REVERSE)
-            stdscr.addstr(idx - offset, 0, display_str)
-            stdscr.attroff(curses.color_pair(color_pair) | curses.A_REVERSE)
-        else:
-            stdscr.attron(curses.color_pair(color_pair))
-            stdscr.addstr(idx - offset, 0, display_str)
-            stdscr.attroff(curses.color_pair(color_pair))
+        y_pos = idx - offset
+        if 0 <= y_pos < height:
+            if idx == current_row:
+                stdscr.attron(curses.color_pair(color_pair) | curses.A_REVERSE)
+                stdscr.addstr(y_pos, 0, display_str)
+                stdscr.attroff(curses.color_pair(color_pair) | curses.A_REVERSE)
+            else:
+                stdscr.attron(curses.color_pair(color_pair))
+                stdscr.addstr(y_pos, 0, display_str)
+                stdscr.attroff(curses.color_pair(color_pair))
 
     if new_data_available and current_row > 0:
-        stdscr.addstr(height - 1, 0, "New logs are available. Scroll to top to view.", curses.color_pair(3) | curses.A_BOLD)
-
+        stdscr.attron(curses.color_pair(3) | curses.A_BOLD)
+        stdscr.addstr(height - 1, 0, "New logs are available. Scroll to top to view.")
+        stdscr.attroff(curses.color_pair(3) | curses.A_BOLD)
 
 def display_events(stdscr, event_queue):
     """ Display events in a scrollable list using curses. """
     curses.curs_set(0)
+    curses.use_default_colors()  # Use the terminal's default colors
     # Define color pairs for each log level
-    curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)  # Default
-    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)    # Error
-    curses.init_pair(3, curses.COLOR_YELLOW, curses.COLOR_BLACK) # Warn
-    curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)  # Info
-    curses.init_pair(5, curses.COLOR_CYAN, curses.COLOR_BLACK)   # HTTP
-    curses.init_pair(6, curses.COLOR_MAGENTA, curses.COLOR_BLACK)# Verbose
-    curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_BLACK)   # Debug
-    curses.init_pair(8, curses.COLOR_BLUE, curses.COLOR_BLACK)  # Silly
+    curses.init_pair(1, curses.COLOR_WHITE, -1)  # Default
+    curses.init_pair(2, curses.COLOR_RED, -1)    # Error
+    curses.init_pair(3, curses.COLOR_YELLOW, -1) # Warn
+    curses.init_pair(4, curses.COLOR_GREEN, -1)  # Info
+    curses.init_pair(5, curses.COLOR_CYAN, -1)   # HTTP
+    curses.init_pair(6, curses.COLOR_MAGENTA, -1)# Verbose
+    curses.init_pair(7, curses.COLOR_WHITE, -1)   # Debug
+    curses.init_pair(8, curses.COLOR_BLUE, -1)  # Silly
 
     event_list = []
     current_row = 0
@@ -175,30 +180,33 @@ def display_events(stdscr, event_queue):
     stdscr.nodelay(True)
     stdscr.timeout(100)
 
+    # Initial population of event_list
+    while not event_queue.empty():
+        event = event_queue.get_nowait()
+        event_list.insert(0, event)
+        event_queue.task_done()
+
     while True:
         height, width = stdscr.getmaxyx()
         should_redraw = False
 
-        try:
-            while True:
-                event = event_queue.get_nowait()
-                if current_row == 0:
-                    event_list.insert(0, event)
-                    should_redraw = True
-                else:
-                    new_data_available = True
-                event_queue.task_done()
-        except queue.Empty:
-            pass
-
-        if should_redraw:
-            stdscr.clear()
-            draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available)
-            stdscr.refresh()
+        # Check for new events
+        while not event_queue.empty():
+            event = event_queue.get_nowait()
+            event_list.insert(0, event)
+            if current_row > 0 or offset > 0:
+                new_data_available = True
+            else:
+                should_redraw = True
+            event_queue.task_done()
 
         key = stdscr.getch()
 
         if key == -1:
+            if should_redraw:
+                stdscr.clear()
+                draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available)
+                stdscr.refresh()
             continue
         elif key in [curses.KEY_UP, ord('w')]:
             if current_row > 0:
@@ -226,12 +234,12 @@ def display_events(stdscr, event_queue):
             show_event_details(stdscr, event_list, current_row, width, height)
             should_redraw = True
 
-        if should_redraw:
+        if should_redraw or new_data_available:
             stdscr.clear()
             draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available)
             stdscr.refresh()
 
-        if current_row == 0:
+        if current_row == 0 and offset == 0:
             new_data_available = False
 
 
