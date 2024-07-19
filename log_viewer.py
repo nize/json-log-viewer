@@ -105,6 +105,45 @@ def parse_log_file(file_path, event_queue, cleartext=False, password=None, progr
             else:
                 time.sleep(0.1)  # Sleep to wait for new lines
 
+def draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available):
+    for idx in range(offset, min(offset + height, len(event_list))):
+        event = event_list[idx]
+        level = event.get('level', '').lower()
+        color_pair = level_color.get(level, 1)  # Default color if level is not matched
+
+        # Determine if there are additional keys
+        expected_keys = {'level', 'message', 'ms', 'timestamp', 'programId', 'runId'}
+        connector = '+' if set(event.keys()) - expected_keys else '-'
+
+        timestamp = event.get('timestamp', 'N/A')
+        message = event.get('message', 'No message')
+        program_id = event.get('programId')
+        run_id = event.get('runId')
+        display_str = f"{timestamp} {connector}"
+        if program_id or run_id:
+            display_str += " ["
+        if program_id:
+            display_str += f"P{program_id}"
+        if run_id:
+            display_str += f"R{run_id}"
+        if program_id or run_id:
+            display_str += "]"
+        display_str += f" {message}"
+        display_str = display_str[:width-1]  # Ensure string does not exceed screen width
+
+        if idx == current_row:
+            stdscr.attron(curses.color_pair(color_pair) | curses.A_REVERSE)
+            stdscr.addstr(idx - offset, 0, display_str)
+            stdscr.attroff(curses.color_pair(color_pair) | curses.A_REVERSE)
+        else:
+            stdscr.attron(curses.color_pair(color_pair))
+            stdscr.addstr(idx - offset, 0, display_str)
+            stdscr.attroff(curses.color_pair(color_pair))
+
+    if new_data_available and current_row > 0:
+        stdscr.addstr(height - 1, 0, "New logs are available. Scroll to top to view.", curses.color_pair(3) | curses.A_BOLD)
+
+
 def display_events(stdscr, event_queue):
     """ Display events in a scrollable list using curses. """
     curses.curs_set(0)
@@ -131,94 +170,65 @@ def display_events(stdscr, event_queue):
     event_list = []
     current_row = 0
     offset = 0
-    new_data_available = False  # Flag to indicate new data is available
+    new_data_available = False
 
-    stdscr.nodelay(True)  # Set getch to be non-blocking
-    stdscr.timeout(100)  # Refresh every 100 milliseconds
+    stdscr.nodelay(True)
+    stdscr.timeout(100)
 
     while True:
-        stdscr.clear()
         height, width = stdscr.getmaxyx()
+        should_redraw = False
 
-        # Try to get new events from the queue
         try:
-            while True:  # Drain the queue if there are multiple entries
+            while True:
                 event = event_queue.get_nowait()
-                event_list.insert(0, event)
-                #print("Event displayed:", event)
-                if current_row > 0:
-                    new_data_available = True  # Set flag if not at the top
+                if current_row == 0:
+                    event_list.insert(0, event)
+                    should_redraw = True
                 else:
-                    new_data_available = False
+                    new_data_available = True
                 event_queue.task_done()
         except queue.Empty:
-            pass  # No more events to process at this moment
+            pass
 
-        for idx in range(offset, min(offset + height, len(event_list))):
-            event = event_list[idx]
-            level = event.get('level', '').lower()
-            color_pair = level_color.get(level, 1)  # Default color if level is not matched
-
-            # Determine if there are additional keys
-            expected_keys = {'level', 'message', 'ms', 'timestamp','programId','runId'}
-            if set(event.keys()) - expected_keys:
-                connector = '+'
-            else:
-                connector = '-'
-
-            timestamp = event.get('timestamp', 'N/A')
-            message = event.get('message', 'No message')
-            program_id = event.get('programId')
-            run_id = event.get('runId')
-            display_str = f"{timestamp} {connector}"
-            if program_id or run_id:
-                display_str += " ["
-            if program_id:
-                display_str += f"P{program_id}"
-            if run_id:
-                display_str += f"R{run_id}"
-            if program_id or run_id:
-                display_str += "]"
-            display_str += f" {message}"
-            display_str = display_str[:width-1]  # Ensure string does not exceed screen width
-
-            if idx == current_row:
-                stdscr.attron(curses.color_pair(color_pair) | curses.A_REVERSE)  # Highlight current row with reverse video
-                stdscr.addstr(idx - offset, 0, display_str)
-                stdscr.attroff(curses.color_pair(color_pair) | curses.A_REVERSE)
-            else:
-                stdscr.attron(curses.color_pair(color_pair))
-                stdscr.addstr(idx - offset, 0, display_str)
-                stdscr.attroff(curses.color_pair(color_pair))
-
-        # Show notification if new data is available and user is not at the top
-        if current_row == 0:
-            new_data_available = False
-
-        if new_data_available and current_row > 0:
-            stdscr.addstr(height - 1, 0, "New logs are available. Scroll to top to view.", curses.color_pair(3) | curses.A_BOLD)
+        if should_redraw:
+            stdscr.clear()
+            draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available)
+            stdscr.refresh()
 
         key = stdscr.getch()
 
         if key == -1:
-            # No key was pressed, continue updating the screen
             continue
         elif key in [curses.KEY_UP, ord('w')] and current_row > 0:
             current_row -= 1
             offset = max(0, current_row - height + 1)
+            should_redraw = True
         elif key in [curses.KEY_DOWN, ord('s')] and current_row < len(event_list) - 1:
             current_row += 1
             offset = max(0, current_row - height + 1)
+            should_redraw = True
         elif key == curses.KEY_PPAGE:
             current_row = max(0, current_row - height)
             offset = max(0, offset - height)
+            should_redraw = True
         elif key == curses.KEY_NPAGE:
             current_row = min(len(event_list) - 1, current_row + height)
             offset = min(max(0, len(event_list) - height), offset + height)
+            should_redraw = True
         elif key == ord('q'):
             break
         elif key == ord('d'):
             show_event_details(stdscr, event_list, current_row, width, height)
+            should_redraw = True
+
+        if should_redraw:
+            stdscr.clear()
+            draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available)
+            stdscr.refresh()
+
+        if current_row == 0:
+            new_data_available = False
 
 def show_event_details(stdscr, event_list, current_row, width, height):
     """ Display detailed JSON event data with formatted keys. """
@@ -288,7 +298,14 @@ def main():
     log_thread.start()
     #log_thread.join() # For testing purposes
 
-    curses.wrapper(display_events, event_queue)  # Use curses to handle the terminal display
+    def run_curses(stdscr):
+        curses.start_color()
+        curses.use_default_colors()
+        curses.curs_set(0)
+        stdscr.nodelay(True)
+        display_events(stdscr, event_queue)
+
+    curses.wrapper(run_curses)
 
 if __name__ == "__main__":
     main()
