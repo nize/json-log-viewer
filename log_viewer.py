@@ -89,7 +89,7 @@ def read_last_lines(file_path, n=100):
             lines.append(file.readline().decode('utf-8').strip())
         return lines[::-1]  # Correct order of lines
 
-def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None, lines=100):
+def parse_log_file(file_path, event_queue, cleartext=False, password=None, program_id=None, run_id=None, lines=1000):
     # Read the specified number of lines from the end
     lines_to_read = read_last_lines(file_path, lines)
     for line in lines_to_read:
