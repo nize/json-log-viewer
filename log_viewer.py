@@ -103,7 +103,7 @@ def parse_log_file(file_path, event_queue, cleartext=False, password=None, progr
             if line:
                 process_line(line, event_queue, cleartext, password, program_id, run_id)
             else:
-                time.sleep(0.1)  # Sleep to wait for new lines
+                time.sleep(0.02)  # Sleep to wait for new lines
 
 # Define this at the module level, outside of any function
 level_color = {
