@@ -71,16 +71,17 @@ class LogReader:
         self.lock = threading.Lock()
         self.event_queue = queue.Queue()
         self.stop_event = threading.Event()
+        self.historical_event_queue = queue.Queue()
 
     def start_reading(self):
-        self.thread = threading.Thread(target=self._read_file)
-        self.thread.start()
+        self.forward_thread = threading.Thread(target=self._read_file_forward)
+        self.forward_thread.start()
 
     def stop_reading(self):
         self.stop_event.set()
-        self.thread.join()
+        self.forward_thread.join()
 
-    def _read_file(self):
+    def _read_file_forward(self):
         with open(self.file_path, 'rb') as file:
             while not self.stop_event.is_set():
                 file.seek(0, os.SEEK_END)
@@ -119,29 +120,131 @@ class LogReader:
         return None
 
     def read_events_backwards(self, num_events):
-        events = []
-        with self.lock:
-            with open(self.file_path, 'rb') as file:
-                chunk_size = 4096
-                while len(events) < num_events and self.position > 0:
-                    chunk_size = min(chunk_size, self.position)
-                    self.position -= chunk_size
-                    file.seek(self.position)
-                    chunk = file.read(chunk_size).decode('utf-8')
-                    lines = chunk.split('\n')
+        def read_backwards():
+            events = []
+            with self.lock:
+                with open(self.file_path, 'rb') as file:
+                    chunk_size = 4096
+                    position = self.position
+                    while len(events) < num_events and position > 0:
+                        chunk_size = min(chunk_size, position)
+                        position -= chunk_size
+                        file.seek(position)
+                        chunk = file.read(chunk_size).decode('utf-8')
+                        lines = chunk.split('\n')
 
-                    if self.position != 0:
-                        lines = lines[1:]  # Remove partial line if not at file start
+                        if position != 0:
+                            lines = lines[1:]  # Remove partial line if not at file start
 
-                    for line in reversed(lines):
-                        if line.strip():
-                            event = self.process_line(line)
-                            if event:
-                                events.append(event)
-                                if len(events) == num_events:
-                                    break
+                        for line in reversed(lines):
+                            if line.strip():
+                                event = self.process_line(line)
+                                if event:
+                                    events.append(event)
+                                    if len(events) == num_events:
+                                        break
 
-        return list(reversed(events))
+            self.historical_event_queue.put(list(reversed(events)))
+
+        # Start a new thread for reading historical events
+        historical_thread = threading.Thread(target=read_backwards)
+        historical_thread.start()
+
+        # Wait for the thread to finish or timeout after 2 seconds
+        historical_thread.join(timeout=2)
+
+        # If the thread is still alive after timeout, return what we have so far
+        if historical_thread.is_alive():
+            print("Warning: Reading historical events timed out.")
+            return []
+        
+        return self.historical_event_queue.get()
+
+def draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count):
+    for idx in range(offset, min(offset + height, len(event_list))):
+        event = event_list[idx]
+        level = event.get('level', '').lower()
+        color_pair = level_color.get(level, 1)  # Default color if level is not matched
+
+        # Determine if there are additional keys
+        expected_keys = {'level', 'message', 'ms', 'timestamp', 'programId', 'runId'}
+        connector = '+' if set(event.keys()) - expected_keys else '-'
+
+        timestamp = event.get('timestamp', 'N/A')
+        message = event.get('message', 'No message')
+        program_id = event.get('programId')
+        run_id = event.get('runId')
+        display_str = f"{timestamp} {connector}"
+        if program_id or run_id:
+            display_str += " ["
+        if program_id:
+            display_str += f"P{program_id}"
+        if run_id:
+            display_str += f"R{run_id}"
+        if program_id or run_id:
+            display_str += "]"
+        display_str += f" {message}"
+        display_str = display_str[:width-1]  # Ensure string does not exceed screen width
+
+        y_pos = idx - offset
+        if 0 <= y_pos < height:
+            if idx == current_row:
+                stdscr.attron(curses.color_pair(color_pair) | curses.A_REVERSE)
+                stdscr.addstr(y_pos, 0, display_str)
+                stdscr.attroff(curses.color_pair(color_pair) | curses.A_REVERSE)
+            else:
+                stdscr.attron(curses.color_pair(color_pair))
+                stdscr.addstr(y_pos, 0, display_str)
+                stdscr.attroff(curses.color_pair(color_pair))
+
+    if new_data_available and new_events_count > 0:
+        stdscr.attron(curses.color_pair(3) | curses.A_BOLD)
+        stdscr.addstr(height - 1, 0, f"{new_events_count} new log(s) available. Scroll to top to view.")
+        stdscr.attroff(curses.color_pair(3) | curses.A_BOLD)
+    
+def show_event_details(stdscr, event_list, current_row, width, height):
+    """ Display detailed JSON event data with formatted keys. """
+    stdscr.clear()
+    details = json.dumps(event_list[current_row], indent=4).replace('\\n', '\n')
+    details_lines = details.split('\n')
+
+    wrapped_lines = []
+    for line in details_lines:
+        wrapped_lines.extend(textwrap.wrap(line, width))
+
+    details_offset = 0
+    while True:
+        stdscr.clear()
+        for i in range(height):
+            line_idx = i + details_offset
+            if line_idx < len(wrapped_lines):
+                line = wrapped_lines[line_idx]
+                if line.strip().startswith('"') and ':' in line:
+                    key, value = line.split(':', 1)
+                    stdscr.attron(curses.color_pair(4))  # Verbose for JSON keys, set as light green earlier
+                    stdscr.addstr(i, 0, key + ':')
+                    stdscr.attroff(curses.color_pair(4))
+                    if i < height - 1:
+                        stdscr.addstr(value)
+                else:
+                    if i < height - 1:
+                        stdscr.addstr(i, 0, line)
+            else:
+                break
+
+        details_key = stdscr.getch()
+        if details_key in [curses.KEY_UP, ord('w')] and details_offset > 0:
+            details_offset -= 1
+        elif details_key in [curses.KEY_DOWN, ord('s')] and details_offset < len(wrapped_lines) - height:
+            details_offset += 1
+        elif details_key == curses.KEY_PPAGE:
+            details_offset = max(0, details_offset - height)
+        elif details_key == curses.KEY_NPAGE:
+            details_offset = min(len(wrapped_lines) - height, details_offset + height)
+        elif details_key == ord('q') or details_key == ord('d'):
+            break
+
+        stdscr.refresh()
 
 def display_events(stdscr, log_reader):
     height, width = stdscr.getmaxyx()
@@ -277,50 +380,6 @@ def display_events(stdscr, log_reader):
             stdscr.attron(curses.color_pair(3) | curses.A_BOLD)
             stdscr.addstr(height - 1, 0, f"{new_events_count} new log(s) available. Scroll to top to view.")
             stdscr.attroff(curses.color_pair(3) | curses.A_BOLD)
-
-    def show_event_details(stdscr, event_list, current_row, width, height):
-        """ Display detailed JSON event data with formatted keys. """
-        stdscr.clear()
-        details = json.dumps(event_list[current_row], indent=4).replace('\\n', '\n')
-        details_lines = details.split('\n')
-
-        wrapped_lines = []
-        for line in details_lines:
-            wrapped_lines.extend(textwrap.wrap(line, width))
-
-        details_offset = 0
-        while True:
-            stdscr.clear()
-            for i in range(height):
-                line_idx = i + details_offset
-                if line_idx < len(wrapped_lines):
-                    line = wrapped_lines[line_idx]
-                    if line.strip().startswith('"') and ':' in line:
-                        key, value = line.split(':', 1)
-                        stdscr.attron(curses.color_pair(4))  # Verbose for JSON keys, set as light green earlier
-                        stdscr.addstr(i, 0, key + ':')
-                        stdscr.attroff(curses.color_pair(4))
-                        if i < height - 1:
-                            stdscr.addstr(value)
-                    else:
-                        if i < height - 1:
-                            stdscr.addstr(i, 0, line)
-                else:
-                    break
-
-            details_key = stdscr.getch()
-            if details_key in [curses.KEY_UP, ord('w')] and details_offset > 0:
-                details_offset -= 1
-            elif details_key in [curses.KEY_DOWN, ord('s')] and details_offset < len(wrapped_lines) - height:
-                details_offset += 1
-            elif details_key == curses.KEY_PPAGE:
-                details_offset = max(0, details_offset - height)
-            elif details_key == curses.KEY_NPAGE:
-                details_offset = min(len(wrapped_lines) - height, details_offset + height)
-            elif details_key == ord('q') or details_key == ord('d'):
-                break
-
-            stdscr.refresh()
 
 def main():
     parser = argparse.ArgumentParser(description="Log Viewer")
