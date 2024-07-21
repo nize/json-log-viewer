@@ -7,6 +7,9 @@ import textwrap
 import time
 import os
 import queue
+import zlib
+import gzip
+import io
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
