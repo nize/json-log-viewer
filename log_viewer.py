@@ -246,6 +246,48 @@ def show_event_details(stdscr, event_list, current_row, width, height):
 
         stdscr.refresh()
 
+def draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count):
+    for idx in range(offset, min(offset + height, len(event_list))):
+        event = event_list[idx]
+        level = event.get('level', '').lower()
+        color_pair = level_color.get(level, 1)  # Default color if level is not matched
+
+        # Determine if there are additional keys
+        expected_keys = {'level', 'message', 'ms', 'timestamp', 'programId', 'runId'}
+        connector = '+' if set(event.keys()) - expected_keys else '-'
+
+        timestamp = event.get('timestamp', 'N/A')
+        message = event.get('message', 'No message')
+        program_id = event.get('programId')
+        run_id = event.get('runId')
+        display_str = f"{timestamp} {connector}"
+        if program_id or run_id:
+            display_str += " ["
+        if program_id:
+            display_str += f"P{program_id}"
+        if run_id:
+            display_str += f"R{run_id}"
+        if program_id or run_id:
+            display_str += "]"
+        display_str += f" {message}"
+        display_str = display_str[:width-1]  # Ensure string does not exceed screen width
+
+        y_pos = idx - offset
+        if 0 <= y_pos < height:
+            if idx == current_row:
+                stdscr.attron(curses.color_pair(color_pair) | curses.A_REVERSE)
+                stdscr.addstr(y_pos, 0, display_str)
+                stdscr.attroff(curses.color_pair(color_pair) | curses.A_REVERSE)
+            else:
+                stdscr.attron(curses.color_pair(color_pair))
+                stdscr.addstr(y_pos, 0, display_str)
+                stdscr.attroff(curses.color_pair(color_pair))
+
+    if new_data_available and new_events_count > 0:
+        stdscr.attron(curses.color_pair(3) | curses.A_BOLD)
+        stdscr.addstr(height - 1, 0, f"{new_events_count} new log(s) available. Scroll to top to view.")
+        stdscr.attroff(curses.color_pair(3) | curses.A_BOLD)
+
 def display_events(stdscr, log_reader):
     height, width = stdscr.getmaxyx()
     event_list = log_reader.read_events_backwards(height)
@@ -338,48 +380,6 @@ def display_events(stdscr, log_reader):
             stdscr.clear()
             draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count)
             stdscr.refresh()
-
-    def draw_events(stdscr, event_list, current_row, offset, height, width, new_data_available, new_events_count):
-        for idx in range(offset, min(offset + height, len(event_list))):
-            event = event_list[idx]
-            level = event.get('level', '').lower()
-            color_pair = level_color.get(level, 1)  # Default color if level is not matched
-
-            # Determine if there are additional keys
-            expected_keys = {'level', 'message', 'ms', 'timestamp', 'programId', 'runId'}
-            connector = '+' if set(event.keys()) - expected_keys else '-'
-
-            timestamp = event.get('timestamp', 'N/A')
-            message = event.get('message', 'No message')
-            program_id = event.get('programId')
-            run_id = event.get('runId')
-            display_str = f"{timestamp} {connector}"
-            if program_id or run_id:
-                display_str += " ["
-            if program_id:
-                display_str += f"P{program_id}"
-            if run_id:
-                display_str += f"R{run_id}"
-            if program_id or run_id:
-                display_str += "]"
-            display_str += f" {message}"
-            display_str = display_str[:width-1]  # Ensure string does not exceed screen width
-
-            y_pos = idx - offset
-            if 0 <= y_pos < height:
-                if idx == current_row:
-                    stdscr.attron(curses.color_pair(color_pair) | curses.A_REVERSE)
-                    stdscr.addstr(y_pos, 0, display_str)
-                    stdscr.attroff(curses.color_pair(color_pair) | curses.A_REVERSE)
-                else:
-                    stdscr.attron(curses.color_pair(color_pair))
-                    stdscr.addstr(y_pos, 0, display_str)
-                    stdscr.attroff(curses.color_pair(color_pair))
-
-        if new_data_available and new_events_count > 0:
-            stdscr.attron(curses.color_pair(3) | curses.A_BOLD)
-            stdscr.addstr(height - 1, 0, f"{new_events_count} new log(s) available. Scroll to top to view.")
-            stdscr.attroff(curses.color_pair(3) | curses.A_BOLD)
 
 def main():
     parser = argparse.ArgumentParser(description="Log Viewer")
