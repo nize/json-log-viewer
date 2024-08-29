@@ -14,6 +14,12 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+import logging
+
+# Set up basic logging configuration
+logging.basicConfig(filename='log_viewer_errors.log', 
+                    level=logging.DEBUG, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
 def should_include_event(event, program_id=None, run_id=None):
     event_program_id = str(event.get('programId', ''))
@@ -24,7 +30,7 @@ def should_include_event(event, program_id=None, run_id=None):
 def decrypt_and_decompress(data:str, password:str) -> str:
     # Check if the encrypted data contains the expected segments
     if ':' not in data:
-        print("Encrypted data format error: Expected segments not found.")
+        logging.error(f"Encrypted data format error: Expected segments not found.")
         return
     salt, iv, data = map(bytes.fromhex, data.split(':'))
     #print("Salt:", salt)
@@ -56,15 +62,26 @@ def process_line(line, event_queue, cleartext, password, program_id, run_id):
             event = json.loads(decrypted_data)
             #print("Processed event:", event) 
         except Exception as e:
-            print(f"Failed to decrypt and decompress log file: {e}")
+            logging.error(f"Failed to decrypt and decompress log file: {e}")
             return
     else:
         try:
             event = json.loads(line.strip())
             #print("Processed event:", event)
         except json.JSONDecodeError as e:
-            print(f"Failed to decode line: {e}")
+            logging.error(f"Failed to decode line: {e}")
             return
+        
+    # Validate that the event is a dictionary with the expected structure
+    if not isinstance(event, dict):
+        logging.error(f"Unexpected JSON structure: {event}")
+        return
+
+    # Optionally, you could check for required keys:
+    required_keys = {'level', 'message', 'timestamp'}
+    if not required_keys.issubset(event):
+        logging.error(f"Missing expected keys in event: {event}")
+        return
 
     if should_include_event(event, program_id, run_id):
         event_queue.put(event)  # Add the event to the queue
@@ -139,6 +156,9 @@ def draw_events(stdscr, event_list, current_row, offset, height, width, new_data
             display_str += f"R{run_id}"
         if program_id or run_id:
             display_str += "]"
+        max_message_length = width - len(display_str) - 1  # Adjust for space
+        if len(message) > max_message_length:
+            message = message[:max_message_length-3] + "..."  # Truncate and add ellipsis
         display_str += f" {message}"
         display_str = display_str[:width-1]  # Ensure string does not exceed screen width
 
