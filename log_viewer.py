@@ -20,6 +20,17 @@ logging.basicConfig(filename='log_viewer_errors.log',
                     level=logging.DEBUG, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Define this at the module level, outside of any function
+level_color = {
+    'error': 2,
+    'warn': 3,
+    'info': 4,
+    'http': 5,
+    'verbose': 6,
+    'debug': 7,
+    'silly': 8
+}
+
 def should_include_event(event, program_id=None, run_id=None):
     try:
         event_program_id = str(event.get('programId', ''))
